@@ -8,6 +8,7 @@ from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
 from detect_util import *
+from hog_subsample import find_cars, add_heat, apply_threshold, draw_labeled_bboxes
 # NOTE: the next import is only valid for scikit-learn version <= 0.17
 # for scikit-learn >= 0.18 use:
 from sklearn.model_selection import train_test_split
@@ -233,7 +234,6 @@ def train():
     plt.show()
 
 
-from hog_subsample import find_cars
 
 if __name__ == '__main__':
     args = parse_arg(sys.argv)
@@ -277,20 +277,26 @@ if __name__ == '__main__':
 
 
         # read images and processing
-        test_imgs = glob.glob("./test_images/*.jpg")
+        test_imgs = glob.glob("./test_images/heat_*.jpg")
         print(test_imgs)
         for ind, fn in enumerate(test_imgs):
             img = mpimg.imread(fn)
+            raw_img = np.copy(img)
             ystart = 384 #480
             ystop = 648  #672
-            scale = 1.5
+            scale_s = 1
+            scale_e = 1.8
+            steps = 5
 
             # May Convert to the wrong channel
-            out_img = find_cars(img, ystart, ystop, scale, svc, X_scaler, orient,
-                                pix_per_cell, cell_per_block, spatial_size,
-                                hist_bins)
-            plt.imshow(out_img)
-            plt.show()
+            box_lists = []  # a list to record different subsample scale
+            for scale in np.linspace(scale_s, scale_e, steps):
+                out_img, box_list = find_cars(img, ystart, ystop, scale, svc, X_scaler, orient,
+                                    pix_per_cell, cell_per_block, spatial_size,
+                                    hist_bins)
+                box_lists.extend(box_list)
+            #plt.subplot(121), plt.imshow(out_img)
+            #plt.show()
 
 
             draw_image = np.copy(img)
@@ -301,7 +307,7 @@ if __name__ == '__main__':
             img = img.astype(np.float32)/255
 
             windows = slide_window(img, x_start_stop=[None, None], y_start_stop=y_start_stop,
-                                   xy_window=(96, 96), xy_overlap=(0.5, 0.5))
+                                   xy_window=(96, 96), xy_overlap=(0.75, 0.75))
 
             hot_windows = search_windows(img, windows, svc, X_scaler, color_space=color_space,
                                          spatial_size=spatial_size, hist_bins=hist_bins,
@@ -312,8 +318,46 @@ if __name__ == '__main__':
 
             window_img = draw_boxes(draw_image, hot_windows, color=(0, 0, 255), thick=6)
 
-            plt.imshow(window_img)
+            #plt.subplot(122), plt.imshow(window_img)
+            #plt.show()
+
+            #f, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+            #ax1.imshow(out_img)
+            #ax1.set_title("hog_subsample", fontsize=30)
+            #ax2.imshow(window_img)
+            #ax2.set_title("search_windows", fontsize=30)
+            #f.tight_layout()
+            #plt.show()
+
+            # build heat map and remove false positive
+            heat = np.zeros_like(raw_img[:,:,0]).astype(np.float)
+
+            # Add heat to each box in box list
+            heat = add_heat(heat, box_lists)
+            #heat = heat / steps
+
+            # Apply threshold to help remove false positives
+            heat = apply_threshold(heat, 11)
+
+            # Visualize the heatmap when displaying
+            heatmap = np.clip(heat, 0, 255)
+
+            # Find final boxes from heatmap using label function
+            from scipy.ndimage.measurements import label
+            #struct = np.ones((3,3))
+            labels = label(heatmap)
+            draw_img = draw_labeled_bboxes(np.copy(raw_img), labels)
+
+            fig = plt.figure()
+            plt.subplot(121)
+            plt.imshow(draw_img)
+            plt.title('Car Positions')
+            plt.subplot(122)
+            plt.imshow(heatmap, cmap='hot')
+            plt.title('Heat Map')
+            fig.tight_layout()
             plt.show()
+
 
 
 
