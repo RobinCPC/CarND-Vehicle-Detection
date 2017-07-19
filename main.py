@@ -286,16 +286,19 @@ if __name__ == '__main__':
             ystart = 384 #480
             ystop = 648  #672
             scale_s = 1
-            scale_e = 1.8
-            steps = 5
+            scale_e = 1.6
+            steps = 4
 
             # May Convert to the wrong channel
             box_lists = []  # a list to record different subsample scale
             for scale in np.linspace(scale_s, scale_e, steps):
                 out_img, box_list = find_cars(img, ystart, ystop, scale, svc, X_scaler, orient,
-                                    pix_per_cell, cell_per_block, spatial_size,
-                                    hist_bins)
+                                    pix_per_cell, cell_per_block, spatial_size, hist_bins,
+                                    color_space=color_space)
                 box_lists.extend(box_list)
+            out_img = np.copy(img)
+            for b in box_lists:
+                cv2.rectangle(out_img, b[0], b[1], (0, 0, 255), 6)
             #plt.subplot(121), plt.imshow(out_img)
             #plt.show()
 
@@ -322,7 +325,7 @@ if __name__ == '__main__':
             #plt.subplot(122), plt.imshow(window_img)
             #plt.show()
 
-            #f, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+            #f, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
             #ax1.imshow(out_img)
             #ax1.set_title("hog_subsample", fontsize=30)
             #ax2.imshow(window_img)
@@ -335,18 +338,23 @@ if __name__ == '__main__':
 
             # Add heat to each box in box list
             heat = add_heat(heat, box_lists)
-            #heat = heat / steps
+            heat = heat / steps
 
             # Apply threshold to help remove false positives
-            heat = apply_threshold(heat, 11)
+            heat = apply_threshold(heat, 4.5)
+            from scipy.ndimage import binary_dilation, binary_erosion, grey_erosion, grey_dilation
+            #heat = grey_erosion(heat)
+            heat = binary_erosion(heat, iterations=10)
+            heat = binary_dilation(heat, iterations=15)
+            #heat = grey_dilation(heat)
 
             # Visualize the heatmap when displaying
             heatmap = np.clip(heat, 0, 255)
 
             # Find final boxes from heatmap using label function
             from scipy.ndimage.measurements import label
-            #struct = np.ones((3,3))
-            labels = label(heatmap)
+            struct = np.ones((3, 3))
+            labels = label(heatmap,structure=struct)
             draw_img = draw_labeled_bboxes(np.copy(raw_img), labels)
 
             fig = plt.figure()
