@@ -160,13 +160,19 @@ def draw_boxes(img, bboxes, color=(0, 0, 255), thick=6):
     return imcopy
 
 
-def convert_color(img, conv='RGB2YCrCb'):
-    if conv == 'RGB2YCrCb':
-        return cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
-    if conv == 'BGR2YCrCb':
-        return cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
-    if conv == 'RGB2LUV':
-        return cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
-    if conv == 'RGB2HSV':
-        return cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+def convert_color(img, conv='RGB'):
+    if conv != 'RGB':
+        if conv == 'HSV':
+            return cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        elif conv == 'LUV':
+            return cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
+        elif conv == 'HLS':
+            return cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+        elif conv == 'YUV':
+            return cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
+        elif conv == 'YCrCb':
+            return cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
+    else:
+        return np.copy(img)
+
 

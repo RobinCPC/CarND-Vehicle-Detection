@@ -139,11 +139,11 @@ def train():
     # Reduce the sample size because
     # The quiz evaluator times out after 13s of CPU time
     sample_size = 5000
-    #cars = cars[0:sample_size]
-    #notcars = notcars[0:sample_size]
+    cars = cars[0:sample_size]
+    notcars = notcars[0:sample_size]
 
     ### TODO: Tweak these parameters and see how the results change.
-    color_space = 'HSV'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+    color_space = 'YCrCb'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
     orient = 9  # HOG orientations
     pix_per_cell = 8  # HOG pixels per cell
     cell_per_block = 2  # HOG cells per block
@@ -193,7 +193,8 @@ def train():
     t2 = time.time()
     print(round(t2 - t, 2), 'Seconds to train SVC...')
     # Check the score of the SVC
-    print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
+    test_score = round(svc.score(X_test, y_test), 4)
+    print('Test Accuracy of SVC = ', test_score)
     # Check the prediction time for a single sample
     t = time.time()
 

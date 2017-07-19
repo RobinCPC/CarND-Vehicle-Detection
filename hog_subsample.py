@@ -8,14 +8,15 @@ from detect_util import *
 
 
 # Define a single function that can extract features using hog sub-sampling and make predictions
-def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, cell_per_block, spatial_size, hist_bins):
+def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, cell_per_block,
+              spatial_size, hist_bins, color_space='RGB'):
 
     draw_img = np.copy(img)
     img = img.astype(np.float32)/255
     box_list = []
 
     img_tosearch = img[ystart:ystop,:,:]
-    ctrans_tosearch = convert_color(img_tosearch, conv='RGB2HSV' ) #'RGB2YCrCb'
+    ctrans_tosearch = convert_color(img_tosearch, conv=color_space ) #'RGB2YCrCb'
     if scale != 1:
         imshape = ctrans_tosearch.shape
         ctrans_tosearch = cv2.resize(ctrans_tosearch, (np.int(imshape[1]/scale), np.int(imshape[0]/scale)))
