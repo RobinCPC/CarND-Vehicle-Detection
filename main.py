@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
 from detect_util import *
 from hog_subsample import find_cars, add_heat, apply_threshold, draw_labeled_bboxes
+from moviepy.editor import VideoFileClip
 # NOTE: the next import is only valid for scikit-learn version <= 0.17
 # for scikit-learn >= 0.18 use:
 from sklearn.model_selection import train_test_split
@@ -34,8 +35,8 @@ def parse_arg(argv):
     parser = argparse.ArgumentParser(description='Vehicle Detecting and Tracking module')
     parser.add_argument('-t', '--train', default=0, help='Set 1 if need to train classifier')
     parser.add_argument('-fd','--folder', default='./dataset/', help='the folder that consist images for training.' )
-    parser.add_argument('-v', '--video', default=0, help='Set 1 if process video file')
-    parser.add_argument('-f', '--file', default='./project_video.mp4', help='the file for finding lane lines.')
+    parser.add_argument('-v', '--video', default=1, help='Set 1 if process video file')
+    parser.add_argument('-f', '--file', default='./test_video.mp4', help='the file for finding lane lines.')
     return parser.parse_args(argv[1:])
 
 
@@ -235,6 +236,89 @@ def train():
     plt.show()
 
 
+class do_process(object):
+    def __init__(self):
+        self.clf = None
+        self.frame = 0
+
+    def process_image(self, img):
+        """
+        main pipeline to process each frame of video
+        :param img:
+        :param clf:
+        :return:
+        """
+        self.frame += 1 # counting number of frame
+        #if self.frame <= 265:
+        #    return img
+        # read parameter from clf
+        svc            = self.clf["svc"]
+        X_scaler       = self.clf["scaler"]
+        orient         = self.clf["orient"]
+        pix_per_cell   = self.clf["pix_per_cell"]
+        cell_per_block = self.clf["cell_per_block"]
+        spatial_size   = self.clf["spatial_size"]
+        hist_bins      = self.clf["hist_bins"]
+        color_space    = self.clf["color_space"]
+
+        # Other parameter not in pickle
+        hog_channel    = "ALL"      # Can be 0, 1, 2, or "ALL"
+        spatial_feat   = True       # Spatial features on or off
+        hist_feat      = True       # Histogram features on or off
+        hog_feat       = True       # HOG features on or off
+
+        raw_img = np.copy(img)
+        ystart = 384 #480
+        ystop = 648  #672
+        scale_s = 1.2
+        scale_e = 1.4
+        steps = 3
+
+        # May Convert to the wrong channel
+        box_lists = []  # a list to record different subsample scale
+        for scale in np.linspace(scale_s, scale_e, steps):
+            _img, box_list = find_cars(img, ystart, ystop, scale, svc, X_scaler, orient,
+                                          pix_per_cell, cell_per_block, spatial_size, hist_bins,
+                                          color_space=color_space)
+            box_lists.extend(box_list)
+        #out_img = np.copy(img)
+        #for b in box_lists:
+        #    cv2.rectangle(out_img, b[0], b[1], (0, 0, 255), 6)
+
+        # build heat map and remove false positive
+        heat = np.zeros_like(raw_img[:,:,0]).astype(np.float)
+
+        # Add heat to each box in box list
+        heat = add_heat(heat, box_lists)
+        #heat = heat / steps
+
+        # Apply threshold to help remove false positives
+        heat = apply_threshold(heat, 0)
+
+        # Visualize the heatmap when displaying
+        heatmap = np.clip(heat, 0, 255)
+
+        # Find final boxes from heatmap using label function
+        from scipy.ndimage.measurements import label
+        struct = np.ones((3, 3))
+        labels = label(heatmap,structure=struct)
+        draw_img = draw_labeled_bboxes(np.copy(raw_img), labels)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(draw_img, "number of box:{}".format(len(box_lists)),
+                    (50,50), font, 1, (255,255,255), 2, cv2.LINE_AA)
+
+        if len(box_lists) >= 1:
+            fig = plt.figure()
+            plt.subplot(121)
+            plt.imshow(draw_img)
+            plt.title('Car Positions')
+            plt.subplot(122)
+            plt.imshow(heatmap, cmap='hot')
+            plt.title('Heat Map')
+            fig.tight_layout()
+            plt.show()
+
+        return draw_img
 
 if __name__ == '__main__':
     args = parse_arg(sys.argv)
@@ -243,6 +327,26 @@ if __name__ == '__main__':
         training classifier and saving parameters
         """
         train()
+    elif int(args.video) == 1:
+        """
+        Using pipeline to detect lane line on video
+        """
+        # load the parameter of classifier
+        param = None
+        with open("./svc_pickle.p", "rb") as f:
+            param = pickle.load(f)
+
+        run = do_process()
+        run.clf = param
+
+        # read file name from cli
+        fn = args.file
+
+        project_output = "./output_images/project.mp4"
+        clip1 = VideoFileClip(fn)
+        proj_clip = clip1.fl_image(run.process_image)
+        proj_clip.write_videofile(project_output, audio=False)
+
     else:
         """
         testing pipeline on image in test_images dir
