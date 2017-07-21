@@ -10,6 +10,7 @@ from skimage.feature import hog
 from detect_util import *
 from hog_subsample import find_cars, add_heat, apply_threshold, draw_labeled_bboxes
 from moviepy.editor import VideoFileClip
+from collections import deque
 # NOTE: the next import is only valid for scikit-learn version <= 0.17
 # for scikit-learn >= 0.18 use:
 from sklearn.model_selection import train_test_split
@@ -36,7 +37,7 @@ def parse_arg(argv):
     parser.add_argument('-t', '--train', default=0, help='Set 1 if need to train classifier')
     parser.add_argument('-fd','--folder', default='./dataset/', help='the folder that consist images for training.' )
     parser.add_argument('-v', '--video', default=1, help='Set 1 if process video file')
-    parser.add_argument('-f', '--file', default='./test_video.mp4', help='the file for finding lane lines.')
+    parser.add_argument('-f', '--file', default='./project_video.mp4', help='the file for finding lane lines.')
     return parser.parse_args(argv[1:])
 
 
@@ -209,6 +210,7 @@ def train():
     dist_pickle['spatial_size']   = spatial_size
     dist_pickle['hist_bins']      = hist_bins
     dist_pickle['color_space']    = color_space
+    dist_pickle['score']          = test_score
     pickle.dump(dist_pickle, open("./svc_pickle.p", "wb") )
 
 
@@ -239,7 +241,9 @@ def train():
 class do_process(object):
     def __init__(self):
         self.clf = None
-        self.frame = 0
+        self.frame = 0                  # count current frame
+        self.box_que = deque(maxlen=9)  # record N recent frame for detected box
+        self.n_box = []                 # record number of box in each frame
 
     def process_image(self, img):
         """
@@ -249,7 +253,7 @@ class do_process(object):
         :return:
         """
         self.frame += 1 # counting number of frame
-        #if self.frame <= 265:
+        #if self.frame <= 487:
         #    return img
         # read parameter from clf
         svc            = self.clf["svc"]
@@ -269,9 +273,9 @@ class do_process(object):
 
         raw_img = np.copy(img)
         ystart = 384 #480
-        ystop = 648  #672
-        scale_s = 1.2
-        scale_e = 1.4
+        ystop = 650  #672
+        scale_s = 1.25
+        scale_e = 1.50
         steps = 3
 
         # May Convert to the wrong channel
@@ -281,6 +285,16 @@ class do_process(object):
                                           pix_per_cell, cell_per_block, spatial_size, hist_bins,
                                           color_space=color_space)
             box_lists.extend(box_list)
+        if len(box_lists) == 0:
+            if len(self.box_que) > 0:
+                self.box_que.popleft()
+        else:
+            self.box_que.append(box_lists)
+        self.n_box.append(len(box_lists))
+
+        #if len(box_lists) < 1:
+        #    return img
+
         #out_img = np.copy(img)
         #for b in box_lists:
         #    cv2.rectangle(out_img, b[0], b[1], (0, 0, 255), 6)
@@ -289,11 +303,16 @@ class do_process(object):
         heat = np.zeros_like(raw_img[:,:,0]).astype(np.float)
 
         # Add heat to each box in box list
-        heat = add_heat(heat, box_lists)
+        for bl in self.box_que:
+            heat = add_heat(heat, bl)
         #heat = heat / steps
 
         # Apply threshold to help remove false positives
         heat = apply_threshold(heat, 0)
+        #if len(self.box_que) <=3:
+        #    heat = apply_threshold(heat, 0)
+        #else:
+        #    heat = apply_threshold(heat, 0)
 
         # Visualize the heatmap when displaying
         heatmap = np.clip(heat, 0, 255)
@@ -302,21 +321,23 @@ class do_process(object):
         from scipy.ndimage.measurements import label
         struct = np.ones((3, 3))
         labels = label(heatmap,structure=struct)
-        draw_img = draw_labeled_bboxes(np.copy(raw_img), labels)
+        draw_img = draw_labeled_bboxes(np.copy(raw_img), labels, heat)
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(draw_img, "number of box:{}".format(len(box_lists)),
                     (50,50), font, 1, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(draw_img, "number of frame:{}".format(self.frame),
+                    (50,100), font, 1, (255,255,255), 2, cv2.LINE_AA)
 
-        if len(box_lists) >= 1:
-            fig = plt.figure()
-            plt.subplot(121)
-            plt.imshow(draw_img)
-            plt.title('Car Positions')
-            plt.subplot(122)
-            plt.imshow(heatmap, cmap='hot')
-            plt.title('Heat Map')
-            fig.tight_layout()
-            plt.show()
+        #if len(box_lists) >= 1:
+        #    fig = plt.figure()
+        #    plt.subplot(121)
+        #    plt.imshow(draw_img)
+        #    plt.title('Car Positions')
+        #    plt.subplot(122)
+        #    plt.imshow(heatmap, cmap='hot')
+        #    plt.title('Heat Map')
+        #    fig.tight_layout()
+        #    plt.show()
 
         return draw_img
 
@@ -346,6 +367,8 @@ if __name__ == '__main__':
         clip1 = VideoFileClip(fn)
         proj_clip = clip1.fl_image(run.process_image)
         proj_clip.write_videofile(project_output, audio=False)
+        plt.plot(run.n_box)
+        plt.show()
 
     else:
         """

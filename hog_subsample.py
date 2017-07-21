@@ -105,7 +105,7 @@ def apply_threshold(heatmap, threshold):
     return heatmap
 
 
-def draw_labeled_bboxes(img, labels):
+def draw_labeled_bboxes(img, labels, heatmap):
     # Iterate through all detected cars
     for car_number in range(1, labels[1] + 1):
         # Find pixels with each car_number label value
@@ -113,6 +113,10 @@ def draw_labeled_bboxes(img, labels):
         # Identify x and y values of those pixels
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])
+        # skip if only detect one box in current lable
+        island = heatmap[nonzeroy, nonzerox]
+        if island.sum()/ island.size <= 3.3:
+            continue
         # Define a bounding box based on min/max x and y
         bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
         # Draw the box on the image
