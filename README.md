@@ -1,3 +1,9 @@
+# For project review:
+* To view writeup, please click [here](./writeup.md)
+
+The following is the original README:
+
+---
 # Vehicle Detection
 [![Udacity - Self-Driving Car NanoDegree](https://s3.amazonaws.com/udacity-sdc/github/shield-carnd.svg)](http://www.udacity.com/drive)
 
