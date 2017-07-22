@@ -7,6 +7,7 @@ import time
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
+from scipy.ndimage.measurements import label
 from detect_util import *
 from hog_subsample import find_cars, add_heat, apply_threshold, draw_labeled_bboxes
 from moviepy.editor import VideoFileClip
@@ -24,7 +25,8 @@ import pickle
 2. Sliding windows
 3. robust detect (heat map)
 4. Test on single image.
-
+5. Test on video
+6. combine several frame to make it more robust.
 '''
 
 
@@ -36,7 +38,7 @@ def parse_arg(argv):
     parser = argparse.ArgumentParser(description='Vehicle Detecting and Tracking module')
     parser.add_argument('-t', '--train', default=0, help='Set 1 if need to train classifier')
     parser.add_argument('-fd','--folder', default='./dataset/', help='the folder that consist images for training.' )
-    parser.add_argument('-v', '--video', default=1, help='Set 1 if process video file')
+    parser.add_argument('-v', '--video', default=0, help='Set 1 if process video file')
     parser.add_argument('-f', '--file', default='./project_video.mp4', help='the file for finding lane lines.')
     return parser.parse_args(argv[1:])
 
@@ -133,16 +135,16 @@ def train():
     not_images = glob.glob('/home/rb/dataset/non-vehicles/*/*.png')
     cars = []
     notcars = []
-    for f in car_images:
-        cars.append(f)
-    for f in not_images:
-        notcars.append(f)
+    #for f in car_images:
+    #    cars.append(f)
+    #for f in not_images:
+    #    notcars.append(f)
 
     # Reduce the sample size because
-    # The quiz evaluator times out after 13s of CPU time
-    sample_size = 5000
-    cars = cars[0:sample_size]
-    notcars = notcars[0:sample_size]
+    # local computer may not have enough memory to train whole data
+    sample_size = 9000
+    cars = car_images[0:sample_size]
+    notcars = not_images[0:sample_size]
 
     ### TODO: Tweak these parameters and see how the results change.
     color_space = 'YCrCb'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
@@ -242,7 +244,7 @@ class do_process(object):
     def __init__(self):
         self.clf = None
         self.frame = 0                  # count current frame
-        self.box_que = deque(maxlen=9)  # record N recent frame for detected box
+        self.box_que = deque(maxlen=6)  # record N recent frame for detected box
         self.n_box = []                 # record number of box in each frame
 
     def process_image(self, img):
@@ -274,7 +276,7 @@ class do_process(object):
         raw_img = np.copy(img)
         ystart = 384 #480
         ystop = 650  #672
-        scale_s = 1.25
+        scale_s = 1.30
         scale_e = 1.50
         steps = 3
 
@@ -318,10 +320,9 @@ class do_process(object):
         heatmap = np.clip(heat, 0, 255)
 
         # Find final boxes from heatmap using label function
-        from scipy.ndimage.measurements import label
         struct = np.ones((3, 3))
         labels = label(heatmap,structure=struct)
-        draw_img = draw_labeled_bboxes(np.copy(raw_img), labels, heat)
+        draw_img = draw_labeled_bboxes(np.copy(raw_img), labels, heat, 3.3)
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(draw_img, "number of box:{}".format(len(box_lists)),
                     (50,50), font, 1, (255,255,255), 2, cv2.LINE_AA)
@@ -405,30 +406,39 @@ if __name__ == '__main__':
 
 
         # read images and processing
-        test_imgs = glob.glob("./test_images/heat_*.jpg")
+        test_imgs = glob.glob("./test_images/heat*.jpg")
+        test_imgs.sort()
         print(test_imgs)
+        out_list = []
+        heat_list = []
+        box_que = []
         for ind, fn in enumerate(test_imgs):
             img = mpimg.imread(fn)
             raw_img = np.copy(img)
             ystart = 384 #480
             ystop = 648  #672
-            scale_s = 1
-            scale_e = 1.6
-            steps = 4
+            scale_s = 1.0
+            scale_e = 1.0
+            steps = 1
 
-            # May Convert to the wrong channel
+            # Use HOG Subsampling method
             box_lists = []  # a list to record different subsample scale
+            t1 = time.time()
             for scale in np.linspace(scale_s, scale_e, steps):
-                out_img, box_list = find_cars(img, ystart, ystop, scale, svc, X_scaler, orient,
+                _img, box_list = find_cars(img, ystart, ystop, scale, svc, X_scaler, orient,
                                     pix_per_cell, cell_per_block, spatial_size, hist_bins,
                                     color_space=color_space)
                 box_lists.extend(box_list)
+            t2 = time.time()
+            box_que.append(box_lists)
+
             out_img = np.copy(img)
             for b in box_lists:
                 cv2.rectangle(out_img, b[0], b[1], (0, 0, 255), 6)
-            #plt.subplot(121), plt.imshow(out_img)
-            #plt.show()
 
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(out_img, "Computing time for Subsampling:{:.3f}".format(t2 - t1),
+                        (50,50), font, 1, (255,255,255), 2, cv2.LINE_AA)
 
             draw_image = np.copy(img)
 
@@ -437,6 +447,7 @@ if __name__ == '__main__':
             # image you are searching is a .jpg (scaled 0 to 255)
             img = img.astype(np.float32)/255
 
+            t1 = time.time()
             windows = slide_window(img, x_start_stop=[None, None], y_start_stop=y_start_stop,
                                    xy_window=(96, 96), xy_overlap=(0.75, 0.75))
 
@@ -446,19 +457,19 @@ if __name__ == '__main__':
                                          cell_per_block=cell_per_block,
                                          hog_channel=hog_channel, spatial_feat=spatial_feat,
                                          hist_feat=hist_feat, hog_feat=hog_feat)
-
+            t2 = time.time()
             window_img = draw_boxes(draw_image, hot_windows, color=(0, 0, 255), thick=6)
 
-            #plt.subplot(122), plt.imshow(window_img)
-            #plt.show()
+            cv2.putText(window_img, "Computing time for Slinding:{:.3f}".format(t2 - t1),
+                        (50,50), font, 1, (255,255,255), 2, cv2.LINE_AA)
 
-            #f, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
-            #ax1.imshow(out_img)
-            #ax1.set_title("hog_subsample", fontsize=30)
-            #ax2.imshow(window_img)
-            #ax2.set_title("search_windows", fontsize=30)
-            #f.tight_layout()
-            #plt.show()
+            f, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+            ax1.imshow(out_img)
+            ax1.set_title("hog_subsample", fontsize=30)
+            ax2.imshow(window_img)
+            ax2.set_title("search_windows", fontsize=30)
+            f.tight_layout()
+            plt.show()
 
             # build heat map and remove false positive
             heat = np.zeros_like(raw_img[:,:,0]).astype(np.float)
@@ -468,33 +479,61 @@ if __name__ == '__main__':
             heat = heat / steps
 
             # Apply threshold to help remove false positives
-            heat = apply_threshold(heat, 4.5)
-            from scipy.ndimage import binary_dilation, binary_erosion, grey_erosion, grey_dilation
+            heat = apply_threshold(heat, 0)
+            #from scipy.ndimage import binary_dilation, binary_erosion, grey_erosion, grey_dilation
             #heat = grey_erosion(heat)
-            heat = binary_erosion(heat, iterations=10)
-            heat = binary_dilation(heat, iterations=15)
+            #heat = binary_erosion(heat, iterations=10)
+            #heat = binary_dilation(heat, iterations=15)
             #heat = grey_dilation(heat)
 
             # Visualize the heatmap when displaying
             heatmap = np.clip(heat, 0, 255)
 
             # Find final boxes from heatmap using label function
-            from scipy.ndimage.measurements import label
             struct = np.ones((3, 3))
             labels = label(heatmap,structure=struct)
-            draw_img = draw_labeled_bboxes(np.copy(raw_img), labels)
+            draw_img = draw_labeled_bboxes(np.copy(raw_img), labels, heat, 0)
 
-            fig = plt.figure()
-            plt.subplot(121)
-            plt.imshow(draw_img)
-            plt.title('Car Positions')
-            plt.subplot(122)
-            plt.imshow(heatmap, cmap='hot')
-            plt.title('Heat Map')
-            fig.tight_layout()
-            plt.show()
+            out_list.append(out_img)
+            heat_list.append(heatmap)
+
+            #fig = plt.figure()
+            #plt.subplot(121)
+            #plt.imshow(draw_img)
+            #plt.title('Car Positions')
+            #plt.subplot(122)
+            #plt.imshow(heatmap, cmap='hot')
+            #plt.title('Heat Map')
+            #fig.tight_layout()
+            #plt.show()
+
+        # combine 6 frame and use threshold to remove false positive
+        raw_img = mpimg.imread(test_imgs[-1])
+        heat = np.zeros_like(raw_img[:,:,0]).astype(np.float)
+
+        # Add heat to each box in box list
+        for bb in box_que:
+            heat = add_heat(heat, bb)
+            # Apply threshold to help remove false positives
+            heat = apply_threshold(heat, 0)
 
 
+        # Visualize the heatmap when displaying
+        heatmap = np.clip(heat, 0, 255)
 
+        # Find final boxes from heatmap using label function
+        struct = np.ones((3, 3))
+        labels = label(heatmap,structure=struct)
+        # do false positive check after labelling
+        draw_img = draw_labeled_bboxes(np.copy(raw_img), labels, heat, 2)
 
+        plt.imshow(labels[0], cmap='gray')
+        plt.title('Label map')
+        plt.tight_layout()
+        plt.show()
+
+        plt.imshow(draw_img)
+        plt.title('Output Boxes')
+        plt.tight_layout()
+        plt.show()
 

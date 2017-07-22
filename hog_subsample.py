@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 import cv2
 from detect_util import *
-#from lesson_functions import *
 
 
 # Define a single function that can extract features using hog sub-sampling and make predictions
@@ -77,16 +76,6 @@ def find_cars(img, ystart, ystop, scale, svc, X_scaler, orient, pix_per_cell, ce
     return draw_img, box_list
 
 
-# Read in a pickle file with bboxes saved
-# Each item in the "all_bboxes" list will contain a
-# list of boxes for one of the images shown above
-#box_list = pickle.load(open("bbox_pickle.p", "rb"))
-
-# Read in image similar to one shown above
-#image = mpimg.imread('test_image.jpg')
-#heat = np.zeros_like(image[:, :, 0]).astype(np.float)
-
-
 def add_heat(heatmap, bbox_list):
     # Iterate through list of bboxes
     for box in bbox_list:
@@ -105,7 +94,7 @@ def apply_threshold(heatmap, threshold):
     return heatmap
 
 
-def draw_labeled_bboxes(img, labels, heatmap):
+def draw_labeled_bboxes(img, labels, heatmap, threshold=3.3):
     # Iterate through all detected cars
     for car_number in range(1, labels[1] + 1):
         # Find pixels with each car_number label value
@@ -115,7 +104,7 @@ def draw_labeled_bboxes(img, labels, heatmap):
         nonzerox = np.array(nonzero[1])
         # skip if only detect one box in current lable
         island = heatmap[nonzeroy, nonzerox]
-        if island.sum()/ island.size <= 3.3:
+        if island.sum()/ island.size <= threshold:
             continue
         # Define a bounding box based on min/max x and y
         bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
@@ -124,25 +113,3 @@ def draw_labeled_bboxes(img, labels, heatmap):
     # Return the image
     return img
 
-
-# Add heat to each box in box list
-#heat = add_heat(heat, box_list)
-
-# Apply threshold to help remove false positives
-#heat = apply_threshold(heat, 1)
-
-# Visualize the heatmap when displaying
-#heatmap = np.clip(heat, 0, 255)
-
-# Find final boxes from heatmap using label function
-#labels = label(heatmap)
-#draw_img = draw_labeled_bboxes(np.copy(image), labels)
-#
-#fig = plt.figure()
-#plt.subplot(121)
-#plt.imshow(draw_img)
-#plt.title('Car Positions')
-#plt.subplot(122)
-#plt.imshow(heatmap, cmap='hot')
-#plt.title('Heat Map')
-#fig.tight_layout()
