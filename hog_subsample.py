@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import cv2
-from detect_util import *
+from VehicleDetection.detect_util import *
 
 
 # Define a single function that can extract features using hog sub-sampling and make predictions
